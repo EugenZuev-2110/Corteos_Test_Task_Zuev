@@ -8,7 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Domain\Interfaces\" />
     <Folder Include="Domain\Services\" />
     <Folder Include="Infrastructure\ExternalServices\Models\" />
     <Folder Include="Infrastructure\Persistence\Migrations\" />
