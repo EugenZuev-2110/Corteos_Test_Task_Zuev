@@ -14,6 +14,9 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
+        // Явно задаем рабочую папку, чтобы программа гарантированно увидела appsettings.json
+        Directory.SetCurrentDirectory(AppContext.BaseDirectory);
+
         // Сборка хоста приложения (конфигурация, логирование, DI)
         var host = CreateHostBuilder(args).Build();
 
@@ -26,7 +29,7 @@ public class Program
             {
                 // Автоматическое применение миграций при старте (Middle-стандарт для контейнеризации)
                 var context = services.GetRequiredService<ApplicationDbContext>();
-                await context.Database.MigrateAsync();
+                await context.Database.EnsureCreatedAsync();
 
                 // Извлекаем оркестратор бизнес-логики и запускаем синхронизацию
                 var syncService = services.GetRequiredService<RateSyncService>();
@@ -34,32 +37,51 @@ public class Program
             }
             catch (Exception ex)
             {
+                // Добавляем задержку, чтобы успеть прочитать ошибку в консоли
+                Console.WriteLine("\nНажмите ENTER для закрытия приложения...");
+                Console.ReadLine();
                 Environment.ExitCode = 1; // Возвращаем код ошибки для внешней вызывающей среды (CI/CD, OS Scheduler)
             }
         }
     }
 
     private static IHostBuilder CreateHostBuilder(string[] args) =>
-        Host.CreateDefaultBuilder(args)
-            .ConfigureServices((hostContext, services) =>
+    Host.CreateDefaultBuilder(args)
+        .ConfigureAppConfiguration((hostingContext, config) =>
+        {
+            config.Sources.Clear(); // Очищаем стандартные пути
+            config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+            config.AddEnvironmentVariables();
+        })
+        .ConfigureServices((hostContext, services) =>
+        {
+            // Здесь ваш текущий код (строка подключения, DbContext, HttpClient и т.д.)
+            var connectionString = hostContext.Configuration.GetConnectionString("DefaultConnection");
+
+            if (string.IsNullOrWhiteSpace(connectionString))
             {
-                // 1. Настройка базы данных PostgreSQL через EF Core
-                var connectionString = hostContext.Configuration.GetConnectionString("DefaultConnection");
-                services.AddDbContext<ApplicationDbContext>(options =>
-                    options.UseNpgsql(connectionString));
+                throw new InvalidOperationException(
+                    "Критическая ошибка: Строка подключения 'DefaultConnection' не найдена или равна null! " +
+                    "Проверьте, что внутри appsettings.json точно есть секция ConnectionStrings.");
+            }
 
-                // 2. Регистрация фабрики HttpClient с таймаутом для защиты от зависания запросов к ЦБ РФ
-                services.AddHttpClient("CbrClient", client =>
-                {
-                    client.Timeout = TimeSpan.FromSeconds(30);
-                    client.DefaultRequestHeaders.Add("User-Agent", "CbrRateExporter-MiddleDeveloper-App");
-                });
+            services.AddDbContext<ApplicationDbContext>(options =>
+                options.UseNpgsql(connectionString));
 
-                // 3. Регистрация компонентов архитектуры (Соблюдение интерфейсов)
-                services.AddScoped<ICbrClient, CbrClient>();
-                services.AddScoped<ICurrencyRateRepository, CurrencyRateRepository>();
-
-                // Доменный сервис оркестрации
-                services.AddScoped<RateSyncService>();
+            // 2. Регистрация фабрики HttpClient с таймаутом и обходом проблем с SSL-сертификатами ЦБ
+            services.AddHttpClient("CbrClient", client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(30);
+                client.DefaultRequestHeaders.Add("User-Agent", "CbrRateExporter-App");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AllowAutoRedirect = true, // Автоматически переходить по редиректам сервера ЦБ
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true // Игнорируем локальные проблемы с SSL-сертификатами РФ
             });
+
+            services.AddScoped<ICbrClient, CbrClient>();
+            services.AddScoped<ICurrencyRateRepository, CurrencyRateRepository>();
+            services.AddScoped<RateSyncService>();
+        });
 }

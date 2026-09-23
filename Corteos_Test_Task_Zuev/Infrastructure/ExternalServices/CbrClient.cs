@@ -26,7 +26,7 @@ public class CbrClient : ICbrClient
     public async Task<IEnumerable<CurrencyRate>> GetRatesByDateAsync(DateTime date, CancellationToken cancellationToken = default)
     {
         // Формат запроса к ЦБ: dd/mm/yyyy
-        var url = $"http://cbr.ru{date:dd/MM/yyyy}";
+        var url = $"http://www.cbr.ru/scripts/XML_daily.asp?date_req={date:dd/MM/yyyy}";
 
         try
         {

@@ -68,20 +68,32 @@ public class RateSyncService
 
     /// <summary>
     /// Выполняет ежедневное регламентное обновление курсов валют.
-    /// Проверяет наличие данных на текущую дату и, если они отсутствуют, запрашивает актуальный курс у ЦБ РФ.
+    /// Проверяет наличие данных на текущую дату. Если ЦБ РФ еще не опубликовал курс на сегодня,
+    /// плавно смещается на дни назад в поисках последних актуальных данных.
     /// </summary>
-    /// <param name="cancellationToken">Токен отмены выполнения асинхронной операции.</param>
-    /// <returns>Асинхронная задача, представляющая процесс ежедневного обновления.</returns>
     private async Task SyncDailyDataAsync(CancellationToken cancellationToken)
     {
         var targetDate = DateTime.Today;
+        const int maxDaysBack = 5; // Защита на случай длинных праздников/выходных
 
-        if (await _repository.HasDataForDateAsync(targetDate, cancellationToken))
+        for (int i = 0; i < maxDaysBack; i++)
         {
-            return;
-        }
+            if (await _repository.HasDataForDateAsync(targetDate, cancellationToken))
+            {
+                return;
+            }
 
-        var rates = await _cbrClient.GetRatesByDateAsync(targetDate, cancellationToken);
-        await _repository.SaveRatesAsync(rates, cancellationToken);
+            var rates = await _cbrClient.GetRatesByDateAsync(targetDate, cancellationToken);
+            var currencyRates = rates.ToList();
+
+            if (currencyRates.Any())
+            {
+                await _repository.SaveRatesAsync(currencyRates, cancellationToken);
+                return; // Успешно сохранили — выходим
+            }
+
+            targetDate = targetDate.AddDays(-1);
+        }
     }
+
 }
