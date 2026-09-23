@@ -39,4 +39,29 @@ public class CurrencyRate
     /// Значение курса к рублю.
     /// </summary>
     public decimal Value { get; private set; }
+
+    private CurrencyRate() { }
+
+    public CurrencyRate(string currencyId, string charCode, string numCode, string name, DateTime date, int nominal, decimal value)
+    {
+        if (string.IsNullOrWhiteSpace(currencyId)) 
+            throw new ArgumentException("CurrencyId cannot be empty", nameof(currencyId));
+
+        if (string.IsNullOrWhiteSpace(charCode)) 
+            throw new ArgumentException("CharCode cannot be empty", nameof(charCode));
+
+        if (nominal <= 0) 
+            throw new ArgumentException("Nominal must be greater than zero", nameof(nominal));
+
+        if (value <= 0) 
+            throw new ArgumentException("Value must be greater than zero", nameof(value));
+
+        CurrencyId = currencyId;
+        CharCode = charCode;
+        NumCode = numCode;
+        Name = name;
+        Date = date.Date;
+        Nominal = nominal;
+        Value = value;
+    }
 }
