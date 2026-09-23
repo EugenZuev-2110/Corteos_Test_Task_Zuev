@@ -1,4 +1,5 @@
-﻿using System.Xml.Serialization;
+﻿using System.Globalization;
+using System.Xml.Serialization;
 
 namespace Corteos_Test_Task_Zuev.Infrastructure.ExternalServices.Models;
 
@@ -21,4 +22,16 @@ public class ValuteXmlDto
 
     [XmlElement("Value")]
     public string ValueString { get; set; } = null!;
+
+    /// <summary>
+    /// Безопасное приведение строки с запятой к типу decimal.
+    /// </summary>
+    public decimal GetValue()
+    {
+        if (string.IsNullOrWhiteSpace(ValueString)) return 0;
+
+        // ЦБ РФ использует запятую в качестве разделителя
+        var culture = new CultureInfo("ru-RU");
+        return decimal.Parse(ValueString, culture);
+    }
 }
